@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InternShield // Secure Relay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#050807;
+    --panel:#070d09;
+    --panel-2:#0a140d;
+    --line:#1d3d26;
+    --line-bright:#2f6b40;
+    --accent:#3dff5a;
+    --accent-dim:#1c8f34;
+    --accent-glow:rgba(61,255,90,.28);
+    --text:#cdeed7;
+    --muted:#5d8267;
+    --faint:#3a5646;
+    --self:#f4c542;
+    --warn:#ff9d3d;
+    --danger:#ff4d4d;
+    --mono:'JetBrains Mono', ui-monospace, monospace;
+    --head:'Rajdhani', var(--mono);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse 120% 80% at 50% -10%, rgba(61,255,90,.07), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(61,255,90,.025) 0px, rgba(61,255,90,.025) 1px, transparent 1px, transparent 3px),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--mono);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:100vh;
+    padding:22px 16px;
+    overflow-x:hidden;
+  }
+
+  /* faint moving grid behind everything */
+  .grid-layer{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      linear-gradient(rgba(61,255,90,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(61,255,90,.05) 1px, transparent 1px);
+    background-size:38px 38px;
+    -webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 30%, #000 10%, transparent 75%);
+    mask-image:radial-gradient(ellipse 70% 60% at 50% 30%, #000 10%, transparent 75%);
+  }
+
+  .scanlines{
+    position:fixed; inset:0; z-index:40; pointer-events:none;
+    background:repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,.16) 3px, rgba(0,0,0,0) 4px);
+    opacity:.5;
+  }
+
+  @keyframes flicker{
+    0%,100%{opacity:1;}
+    92%{opacity:1;}
+    93%{opacity:.94;}
+    94%{opacity:1;}
+    96%{opacity:.97;}
+  }
+
+  .rig{
+    position:relative;
+    z-index:1;
+    width:100%;
+    max-width:900px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+
+  /* ===== Terminal shell ===== */
+  .shell{
+    position:relative;
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1px solid var(--line);
+    box-shadow:0 0 0 1px rgba(0,0,0,.6), 0 30px 80px -30px rgba(0,0,0,.9), 0 0 40px -10px var(--accent-glow) inset;
+    animation:flicker 7s infinite;
+  }
+  /* HUD corner brackets — the one bold signature element */
+  .shell::before,.shell::after,
+  .bracket-br,.bracket-bl{
+    content:"";
+    position:absolute;
+    width:22px; height:22px;
+    border:2px solid var(--accent);
+    opacity:.85;
+    filter:drop-shadow(0 0 4px var(--accent-glow));
+  }
+  .shell::before{ top:-1px; left:-1px; border-right:none; border-bottom:none; }
+  .shell::after{ top:-1px; right:-1px; border-left:none; border-bottom:none; }
+  .bracket-bl{ bottom:-1px; left:-1px; border-right:none; border-top:none; }
+  .bracket-br{ bottom:-1px; right:-1px; border-left:none; border-top:none; }
+
+  /* ===== Header ===== */
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:14px;
+    padding:16px 20px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(61,255,90,.05), transparent);
+  }
+  .brand{ display:flex; align-items:center; gap:14px; min-width:0; }
+  .logo-box{
+    width:52px; height:52px; flex:none;
+    border:1px solid var(--line-bright);
+    background:#020602;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 14px -4px var(--accent-glow) inset;
+  }
+  .logo-box img{ width:100%; height:100%; object-fit:contain; }
+  .brand-text h1{
+    font-family:var(--head);
+    margin:0;
+    font-size:19px;
+    font-weight:700;
+    letter-spacing:.06em;
+    color:#eafff0;
+    line-height:1.15;
+  }
+  .brand-text p{
+    margin:2px 0 0;
+    font-size:11.5px;
+    color:var(--muted);
+    letter-spacing:.05em;
+  }
+  .clock-block{ text-align:right; flex:none; font-size:12px; }
+  .clock-block .time{ font-family:var(--head); font-size:16px; font-weight:600; color:var(--text); }
+  .status-line{ display:flex; align-items:center; gap:6px; justify-content:flex-end; margin-top:2px; color:var(--muted); }
+  .status-dot{ width:7px; height:7px; border-radius:50%; background:var(--warn); box-shadow:0 0 8px var(--warn); }
+  .status-dot.ok{ background:var(--accent); box-shadow:0 0 8px var(--accent); animation:pulse 1.8s infinite; }
+  .status-dot.down{ background:var(--danger); box-shadow:0 0 8px var(--danger); }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  /* ===== HUD stat strip ===== */
+  .stat-strip{
+    display:grid;
+    grid-template-columns:1.4fr 1fr 1fr;
+    border-bottom:1px solid var(--line);
+    font-size:11px;
+    letter-spacing:.03em;
+  }
+  .stat{
+    padding:9px 16px;
+    border-right:1px solid var(--line);
+    display:flex; flex-direction:column; gap:2px;
+    min-width:0;
+  }
+  .stat:last-child{ border-right:none; }
+  .stat .k{ color:var(--faint); text-transform:uppercase; font-size:10px; letter-spacing:.08em; }
+  .stat .v{ color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .stat .v.accent{ color:var(--accent); }
+
+  /* ===== Chat log ===== */
+  main{
+    height:min(52vh, 460px);
+    overflow-y:auto;
+    padding:16px 20px;
+    display:flex;
+    flex-direction:column;
+    gap:5px;
+    background:
+      linear-gradient(rgba(0,0,0,.15), rgba(0,0,0,.15));
+  }
+  main::-webkit-scrollbar{ width:9px; }
+  main::-webkit-scrollbar-track{ background:#040905; }
+  main::-webkit-scrollbar-thumb{ background:var(--line-bright); }
+  main::-webkit-scrollbar-thumb:hover{ background:var(--accent-dim); }
+
+  .sys-line{ color:var(--faint); font-size:12.5px; }
+  .sys-line.hl{ color:var(--accent-dim); }
+  .sys-line.warn{ color:var(--warn); }
+
+  .msg-row{ display:flex; gap:10px; font-size:13px; word-break:break-word; align-items:baseline; }
+  .msg-row .ts{ flex:none; color:var(--faint); user-select:none; }
+  .msg-row .tag{ flex:none; font-weight:600; user-select:none; }
+  .msg-row .tag.anon{ color:var(--accent); }
+  .msg-row .tag.you{ color:var(--self); }
+  .msg-row .body{ color:var(--text); }
+
+  .divider{
+    display:flex; align-items:center; gap:8px;
+    color:var(--faint); font-size:10.5px; letter-spacing:.1em;
+    margin:6px 0;
+  }
+  .divider::before,.divider::after{ content:""; flex:1; height:1px; background:var(--line); }
+
+  /* ===== Input footer ===== */
+  footer{
+    border-top:1px solid var(--line);
+    background:linear-gradient(0deg, rgba(61,255,90,.05), transparent);
+    padding:14px 20px 16px;
+  }
+  form{ display:flex; gap:10px; align-items:center; }
+  .prompt-shell{
+    flex:1;
+    display:flex; align-items:center;
+    background:#030804;
+    border:1px solid var(--line);
+    padding:10px 12px;
+    min-width:0;
+  }
+  .prompt-shell:focus-within{ border-color:var(--accent-dim); box-shadow:0 0 0 1px var(--accent-dim); }
+  .prompt-sym{ color:var(--accent-dim); margin-right:8px; user-select:none; flex:none; }
+  #command-input{
+    flex:1; min-width:0;
+    background:transparent; border:none; outline:none;
+    color:var(--text); font-family:var(--mono); font-size:13.5px;
+  }
+  #command-input::placeholder{ color:var(--faint); }
+  button[type=submit]{
+    flex:none;
+    font-family:var(--head);
+    font-weight:600;
+    letter-spacing:.06em;
+    font-size:13px;
+    background:transparent;
+    color:var(--accent);
+    border:1px solid var(--accent-dim);
+    padding:10px 18px;
+    cursor:pointer;
+    transition:background .15s, color .15s;
+  }
+  button[type=submit]:hover{ background:var(--accent); color:#031a08; }
+  button[type=submit]:active{ transform:translateY(1px); }
+
+  /* ===== Note + footer link (outside the shell) ===== */
+  .relay-note{
+    display:flex; gap:10px;
+    border:1px solid var(--line);
+    background:rgba(61,255,90,.035);
+    padding:12px 14px;
+    font-size:12px;
+    color:var(--muted);
+    line-height:1.55;
+  }
+  .relay-note .icon{
+    flex:none; width:16px; height:16px; margin-top:1px;
+    color:var(--accent-dim);
+  }
+  .relay-note b{ color:var(--text); font-weight:600; }
+
+  .site-footer{
+    text-align:center;
+    font-size:11.5px;
+    letter-spacing:.06em;
+    color:var(--faint);
+    padding:2px 0 6px;
+  }
+  .site-footer a{
+    color:var(--accent-dim);
+    text-decoration:none;
+    border-bottom:1px dotted var(--line-bright);
+    transition:color .15s;
+  }
+  .site-footer a:hover{ color:var(--accent); }
+
+  @media (max-width:640px){
+    .stat-strip{ grid-template-columns:1fr; }
+    .stat{ border-right:none; border-bottom:1px solid var(--line); }
+    .stat:last-child{ border-bottom:none; }
+    .clock-block{ display:none; }
+    main{ height:50vh; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .shell{ animation:none; }
+    .status-dot.ok{ animation:none; }
+  }
+</style>
+</head>
+<body onclick="focusInput()">
+
+<div class="grid-layer"></div>
+<div class="scanlines"></div>
+
+<div class="rig">
+
+  <div class="shell">
+    <div class="bracket-bl"></div>
+    <div class="bracket-br"></div>
+
+    <header>
+      <div class="brand">
+        <div class="logo-box">
+          <img src="logo.png">
+        </div>
+        <div class="brand-text">
+          <h1>INTERNSHIELD SECURE TERMINAL</h1>
+          <p>ANONYMOUS RELAY &nbsp;·&nbsp; BUILD 2.1</p>
+        </div>
+      </div>
+      <div class="clock-block">
+        <div class="time" id="sys-time">00:00:00</div>
+        <div class="status-line">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="conn-status">CONNECTING</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="stat-strip">
+      <div class="stat">
+        <span class="k">Channel</span>
+        <span class="v" id="stat-channel">internshield_anony_chat</span>
+      </div>
+      <div class="stat">
+        <span class="k">Identity</span>
+        <span class="v accent">ANONYMOUS</span>
+      </div>
+      <div class="stat">
+        <span class="k">Last Activity</span>
+        <span class="v" id="stat-activity">—</span>
+      </div>
+    </div>
+
+    <main id="chat-container"></main>
+
+    <footer>
+      <form id="chat-form" autocomplete="off">
+        <div class="prompt-shell">
+          <span class="prompt-sym">anon@internshield:~$</span>
+          <input type="text" id="command-input" placeholder="type a message and hit enter" autofocus>
+        </div>
+        <button type="submit">TRANSMIT</button>
+      </form>
+    </footer>
+  </div>
+
+  <div class="relay-note">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+      <circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/>
+    </svg>
+    <div>
+      <b>This is a live, shared relay — not a private conversation.</b>
+      Everyone with this page open shares the same channel. If another operative is online right now, your message reaches them instantly and their reply appears here in real time. If no one is online, your message still transmits and will be seen by the next person who connects.
+    </div>
+  </div>
+
+  <div class="site-footer">
+    <a href="https://home.internshield.in" target="_blank" rel="noopener">home.internshield.in</a>
+  </div>
+
+</div>
+
+<script>
+  const TOPIC = "internshield_anony_chat";
+  const NTFY_URL = `https://ntfy.sh/${TOPIC}`;
+
+  const chatContainer = document.getElementById('chat-container');
+  const chatForm      = document.getElementById('chat-form');
+  const cmdInput      = document.getElementById('command-input');
+  const connStatus    = document.getElementById('conn-status');
+  const statusDot     = document.getElementById('status-dot');
+  const sysTime       = document.getElementById('sys-time');
+  const statActivity  = document.getElementById('stat-activity');
+  const statChannel   = document.getElementById('stat-channel');
+
+  statChannel.textContent = TOPIC;
+
+  function focusInput(){ cmdInput.focus(); }
+
+  setInterval(() => {
+    sysTime.textContent = new Date().toLocaleTimeString('en-US', { hour12:false });
+  }, 1000);
+
+  function clockNow(){
+    return new Date().toLocaleTimeString('en-US', { hour12:false });
+  }
+
+  function scrollToBottom(){
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  function appendSystemLine(text, cls){
+    const line = document.createElement('div');
+    line.className = 'sys-line' + (cls ? ' ' + cls : '');
+    line.textContent = text;
+    chatContainer.appendChild(line);
+    scrollToBottom();
+  }
+
+  function appendDivider(label){
+    const d = document.createElement('div');
+    d.className = 'divider';
+    d.textContent = label;
+    chatContainer.appendChild(d);
+    scrollToBottom();
+  }
+
+  function appendMessage(text, isSelf){
+    const row = document.createElement('div');
+    row.className = 'msg-row';
+
+    const ts = document.createElement('span');
+    ts.className = 'ts';
+    ts.textContent = `[${clockNow()}]`;
+
+    const tag = document.createElement('span');
+    tag.className = 'tag ' + (isSelf ? 'you' : 'anon');
+    tag.textContent = isSelf ? '<YOU>' : '<ANON>';
+
+    const body = document.createElement('span');
+    body.className = 'body';
+    body.textContent = text; // textContent only — no HTML injection
+
+    row.appendChild(ts);
+    row.appendChild(tag);
+    row.appendChild(body);
+    chatContainer.appendChild(row);
+    scrollToBottom();
+
+    statActivity.textContent = clockNow();
+  }
+
+  const bootSequence = [
+    "INITIALIZING SECURE SHELL...",
+    "MOUNTING ENCRYPTED FILESYSTEM...",
+    "ESTABLISHING PROXY CHAIN ... [OK]",
+    "NEGOTIATING HANDSHAKE WITH RELAY...",
+    "CHANNEL JOINED: /" + TOPIC,
+    "NO LOGS ARE KEPT. IDENTITIES ARE NOT STORED.",
+    "AWAITING TRANSMISSIONS —"
+  ];
+
+  async function runBootSequence(){
+    for (const line of bootSequence){
+      appendSystemLine(line, 'hl');
+      await new Promise(r => setTimeout(r, 90 + Math.random()*160));
+    }
+    appendDivider('LIVE CHANNEL');
+    initNtfyConnection();
+  }
+
+  // Messages we've sent, waiting to be echoed back by the relay so we can
+  // label them <YOU> instead of <ANON> when they arrive.
+  const pendingSelf = [];
+
+  let eventSource;
+
+  function setStatus(state){
+    statusDot.className = 'status-dot' + (state === 'ok' ? ' ok' : state === 'down' ? ' down' : '');
+    connStatus.textContent =
+      state === 'ok' ? 'SECURED' : state === 'down' ? 'DISCONNECTED' : 'CONNECTING';
+  }
+
+  function initNtfyConnection(){
+    eventSource = new EventSource(`${NTFY_URL}/sse`);
+
+    eventSource.onopen = () => setStatus('ok');
+
+    eventSource.onerror = () => {
+      setStatus('down');
+      appendSystemLine('> CONNECTION LOST — RECONNECTING...', 'warn');
+    };
+
+    eventSource.onmessage = (event) => {
+      let data;
+      try { data = JSON.parse(event.data); }
+      catch (e) { return; }
+
+      if (data.event !== 'message') return;
+
+      const idx = pendingSelf.indexOf(data.message);
+      if (idx !== -1){
+        pendingSelf.splice(idx, 1);
+        appendMessage(data.message, true);
+      } else {
+        appendSystemLine('> PEER ONLINE — INCOMING TRANSMISSION', 'hl');
+        appendMessage(data.message, false);
+      }
+    };
+  }
+
+  async function sendMessage(text){
+    if (!text.trim()) return;
+    pendingSelf.push(text);
+    try{
+      await fetch(NTFY_URL, {
+        method:'POST',
+        body:text,
+        headers:{ 'Content-Type':'text/plain' }
+      });
+    } catch (err){
+      const i = pendingSelf.indexOf(text);
+      if (i !== -1) pendingSelf.splice(i,1);
+      appendSystemLine(`> TRANSMISSION FAILED (${err.message})`, 'warn');
+    }
+  }
+
+  chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = cmdInput.value;
+    if (text.trim() === '') return;
+    cmdInput.value = '';
+    sendMessage(text);
+  });
+
+  window.onload = () => {
+    focusInput();
+    runBootSequence();
+  };
+</script>
+</body>
+</html>
